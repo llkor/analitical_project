@@ -1,0 +1,151 @@
+---
+title: "Projekt analityczny: linie lotnicze"
+author: "Daria Moroz"
+date: "17 04 2020"
+output: pdf_document
+---
+```{r,setup, include=FALSE}
+library(RODBC)
+library(keyring)
+key_set(service = "Projekt",username = "dbad_s452646")
+con <- odbcConnect("Projekt",uid = "dbad_s452646", pwd = 
+                     key_get("Projekt","dbad_s452646"))
+knitr::opts_chunk$set(echo=FALSE)
+```
+
+ZADANIE 1
+Jakie było średnie opóźnienie przylotu?
+```{r}
+
+result <- sqlQuery(con,"SELECT AVG(arr_delay_new) AS 'avg_delay' FROM Flight_delays")
+knitr::kable(result)
+
+```
+
+
+ZADANIE 2
+Jakie było maksymalne opóźnienie przylotu?
+```{r}
+result <- sqlQuery(con,"SELECT MAX(arr_delay_new) AS 'max_delay' FROM Flight_delays")
+knitr::kable(result)
+```
+
+
+
+ZADANIE 3
+Który lot miał największe opóźnienie przylotu?
+```{r}
+result <- sqlQuery(con,"SELECT F2.carrier,F2.origin_city_name,F2.dest_city_name,F2.fl_date,F2.arr_delay_new
+From Flight_delays F2
+WHERE F2.arr_delay_new = (SELECT MAX(arr_delay_new) FROM Flight_delays)")
+knitr::kable(result)
+```
+
+
+
+ZADANIE 4
+Które dni tygodnia są najgorsze do podróżowania?
+```{r}
+result <- sqlQuery(con,"SELECT W.weekday_name,AVG(F.arr_delay_new) AS 'avg_delay'
+FROM Flight_delays F JOIN Weekdays W ON W.weekday_id = F.day_of_week 
+GROUP BY W.weekday_name
+ORDER BY  AVG(F.arr_delay_new) DESC")
+knitr::kable(result)
+```
+
+
+
+ZADANIE 5
+Które linie lotnicze latające z San Francisco (SFO) mają najmniejsze opóźnienia przylotu?
+```{r}
+result <- sqlQuery(con,"SELECT A.airline_name,AVG(F.arr_delay_new) AS 'avg_delay'
+FROM Flight_delays F JOIN Airlines A 
+                        ON A.airline_id = F.airline_id
+					JOIN Flight_delays F1 ON F.airline_id= F1.airline_id
+					AND F1.dest_city_name = 'San Francisco, CA'
+GROUP BY A.airline_name
+ORDER BY AVG(F.arr_delay_new) DESC")
+knitr::kable(result)
+```
+
+
+
+
+ZADANIE 6
+Jaka część linii lotniczych ma regularne opóźnienia, tj. jej lot ma średnio co najmniej 10 min. opóźnienia?
+```{r}
+result <- sqlQuery(con,"SELECT COUNT (DISTINCT airline_id) FROM Flight_delays")
+resul <- sqlQuery(con,"SELECT COUNT(*) AS 'late_proportion' 
+FROM (SELECT COUNT(*) AS liczba FROM Flight_delays
+GROUP BY airline_id
+HAVING AVG(arr_delay_new) >= 10) AS Tabela")
+knitr::kable(resul/result)
+```
+
+
+
+ZADANIE 7
+Jak opóźnienia wylotów wpływają na opóźnienia przylotów?
+```{r}
+x <- sqlQuery(con,"SELECT (AVG(dep_delay_new*arr_delay_new) - (AVG(dep_delay_new)*AVG(arr_delay_new)))/
+(STDEVP(dep_delay_new)*STDEVP(arr_delay_new)) AS Pearson
+FROM Flight_delays")
+knitr::kable(x)
+```
+
+
+
+ZADANIE 8
+Która linia lotnicza miała największy wzrost średniego opóźnienia przylotów w ostatnim tygodniu miesiąca?
+```{r}
+
+final <- sqlQuery(con,"WITH CTE_First
+AS 
+(
+SELECT carrier,
+AVG(arr_delay_new) AS avg_delay,
+airline_id 
+FROM Flight_delays 
+WHERE fl_date >= '2017-07-01' AND fl_date <= '2017-07-23'
+GROUP BY carrier, airline_id), 
+
+CTE_Second
+AS
+(
+SELECT carrier,
+AVG(arr_delay_new) AS avg_delay_2,
+airline_id 
+FROM Flight_delays 
+WHERE fl_date >= '2017-07-24' AND fl_date <= '2017-07-31' GROUP BY carrier, airline_id)
+SELECT A.airline_name, C2.avg_delay_2 - C1.avg_delay AS delay_increase
+FROM CTE_First C1 
+JOIN CTE_Second C2 ON C1.carrier = C2.carrier JOIN Airlines A ON C1.airline_id = A.airline_id 
+WHERE C2.avg_delay_2 - C1.avg_delay = (SELECT MAX(C2.avg_delay_2 - C1.avg_delay) FROM CTE_First C1 JOIN CTE_Second C2 ON C1.carrier=C2.carrier)")
+knitr::kable(final)
+```
+
+
+ZADANIE 9
+Które linie lotnicze latają zarówno na trasie SFO → PDX (Portland), jak i SFO → EUG (Eugene)?
+```{r}
+result <- sqlQuery(con,"SELECT DISTINCT A.airline_name FROM Airlines A
+JOIN Flight_delays F ON F.airline_id = A.airline_id
+JOIN Flight_delays F2 ON F2.airline_id = A.airline_id
+WHERE F.origin = 'SFO' AND F.dest = 'EUG' AND F2.dest = 'EUG'")
+knitr::kable(result)
+
+```
+
+ZADANIE 10
+Jak najszybciej dostać się z Chicago do Stanfordu, zakładając wylot po 14:00 czasu lokalnego?
+```{r}
+result <- sqlQuery(con,"SELECT origin,dest, AVG(arr_delay_new) AS 'avg_delay'  
+FROM Flight_delays
+WHERE (origin = 'MDW' OR origin = 'ORD') AND (dest = 'SFO' OR dest = 'SJC' OR dest = 'OAK') AND (crs_dep_time > 1400)
+GROUP BY origin,dest
+ORDER BY AVG(arr_delay_new) DESC")
+knitr::kable(result)
+```
+
+
+
